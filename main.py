@@ -90,6 +90,21 @@ def raw_id(event):
     match event['evt']:
         case 'enterprise_aff_member':
             return f"{event['data']['aff_pk']}:{event['data']['person_pk']}" 
+        case 'enterprise_person':
+            return f"{event['data']['person_pk']}"
+        case 'enterprise_aff_organization':
+            return f"{event['data']['aff_pk']}"
+        case 'enterprise_person_address':
+            return f"{event['data']['address_pk']}"
+        case 'enterprise_person_phone':
+            return f"{event['data']['phone_pk']}"
+        case 'enterprise_person_email':
+            return f"{event['data']['email_pk']}"
+        case 'enterprise_office':
+            return f"{event['data']['office_pk']}"
+        case 'enterprise_term_of_office':
+            return f"{event['data']['term_of_office_pk']}"
+        
     #return f"{evt['src_metadata']['table-name']}:{evt['src_metadata']['partition-key-value']}"
 
 
@@ -111,54 +126,42 @@ async def returnRecords(file, bucket):
 
     return rec
 
+async def deduplicateRecords(records):
+    d = {}
+    for line in records:
 
-test_file_links = event_links['enterprise_aff_member'][2:3]
+        id = raw_id(line)
+
+        if('id' in d):
+            exist = d[id]
+
+            d[id] = line if line['src_metadata']['timestamp'] > exist['src_metadata']['timestamp'] else exist
+        else:
+            d[id] = line
+
+    return d
+
+
 async def main(links, bucket):
     #for each file in list of files, open file and read in line by line and save the record to 'rec'
-    deduped = {}
-
-    for link in links:
-        rec = await returnRecords(link, bucket)
-
-        print(f"Original records length: {len(rec)}")
-
-        for line in rec:
-            id = raw_id(line)
-
-            
-
-            if('id' in deduped):
-                exist = deduped[id]
-
-                deduped[id] = line if line['src_metadata']['timestamp'] > exist['src_metadata']['timestamp'] else exist
-            else:
-                deduped[id] = line
-            
-            
+    
+    for k, v in links.items():
+        deduped = {}
+        for link in v[0:10]:
+            records = await returnRecords(link, bucket)
+            deduped.update(await deduplicateRecords(records))
 
     
-    print(f"Length of deduped records: {len(deduped)}")
-    
+        payload = []
+        for _, v in deduped.items():  
+            ev = {}     
+            ev, ev['ts'] = v['data'], v['ts']
 
+            payload.append(ev)
 
+        df = pd.DataFrame(payload)
+        df.to_csv(f"{k}.tsv", sep='\t', index=False)
+        
 
-    #set empty dictionary 'deduped'
+asyncio.run(main(event_links, source_bucket))
 
-    #generate the hash 'id' -> pass 'rec' to a 'raw_id' function. The 'raw_id' function takes an event and returns a template literal like `table_name:partition-key-value`
-
-    '''
-        inside of loop, if deduped[id] is true, set 'exist' to deduped[id] then:
-
-        set deduped[id] = rec.metadata.timestamp > exist.metadata.timestamp ? rec : exist;
-
-        else
-
-        set deduped[id] = rec
-    '''
-
-    '''
-
-    
-    '''
-
-asyncio.run(main(test_file_links, source_bucket))
