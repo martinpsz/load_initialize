@@ -131,13 +131,15 @@ async def deduplicateRecords(records):
     for line in records:
 
         id = raw_id(line)
+        payload, payload['ts'] = line['data'], line['ts'] 
 
         if('id' in d):
             exist = d[id]
+                   
 
-            d[id] = line if line['src_metadata']['timestamp'] > exist['src_metadata']['timestamp'] else exist
+            d[id] = payload if line['src_metadata']['timestamp'] > exist['src_metadata']['timestamp'] else exist
         else:
-            d[id] = line
+            d[id] = payload
 
     return d
 
@@ -147,17 +149,18 @@ async def main(links, bucket):
     
     for k, v in links.items():
         deduped = {}
-        for link in v[0:10]:
+        
+        for link in v:
             records = await returnRecords(link, bucket)
             deduped.update(await deduplicateRecords(records))
 
-    
+
         payload = []
         for _, v in deduped.items():  
-            ev = {}     
-            ev, ev['ts'] = v['data'], v['ts']
+            #ev = {}     
+            #ev, ev['ts'] = v['data'], v['ts']
 
-            payload.append(ev)
+            payload.append(v)
 
         df = pd.DataFrame(payload)
         df.to_csv(f"{k}.tsv", sep='\t', index=False)
