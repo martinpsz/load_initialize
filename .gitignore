@@ -1,2 +1,4 @@
 .env
 venv/
+initial_load_files_list.json
+prod_data_links.json
