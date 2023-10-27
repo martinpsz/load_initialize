@@ -6,6 +6,9 @@ import pandas as pd
 import tempfile
 import gzip
 import csv
+import asyncio
+import hashlib
+
 
 
 #Connect to AWS S3 bucket with a new boto session
@@ -82,33 +85,80 @@ def retrieveAndSaveHeaders(bucket, file, event_name):
 #for k, v in event_links.items():
 #    retrieveAndSaveHeaders(source_bucket, v[0], k)
 
+##################################################################################
+def raw_id(event):
+    match event['evt']:
+        case 'enterprise_aff_member':
+            return f"{event['data']['aff_pk']}:{event['data']['person_pk']}" 
+    #return f"{evt['src_metadata']['table-name']}:{evt['src_metadata']['partition-key-value']}"
 
-def returnUniqueAndLatestEventData():
-    test_file = event_links['enterprise_aff_organization'][0]
 
-    hashMap = {}
-    with tempfile.NamedTemporaryFile() as f:
-        source_bucket.download_fileobj(test_file, f)
 
-        with gzip.open(f.name, 'rb') as g:
-            df = pd.read_json(g, lines=True)
-            data = pd.json_normalize(df['data'])
+async def returnRecords(file, bucket):
+    #Read through list of files and return records in each file.
+    rec = []
+    with tempfile.NamedTemporaryFile() as tf:
+        bucket.download_fileobj(file, tf)
 
-            timestamp = df['ts']
-            primary_key = data['aff_pk'] 
+        
+        with gzip.open(tf.name, 'rb') as gz:
+            line = gz.readlines()
+
+            for row in line:
+                rec.append(json.loads(row))
+
+        tf.close()
+
+    return rec
+
+
+test_file_links = event_links['enterprise_aff_member'][2:3]
+async def main(links, bucket):
+    #for each file in list of files, open file and read in line by line and save the record to 'rec'
+    deduped = {}
+
+    for link in links:
+        rec = await returnRecords(link, bucket)
+
+        print(f"Original records length: {len(rec)}")
+
+        for line in rec:
+            id = raw_id(line)
 
             
 
-            #if primary_key in hashMap:
-            #    if timestamp > hashMap[primary_key][1]:
-            #        hashMap[primary_key] = (data, timestamp)
-            #else:
-            #    hashMap[primary_key] = (data, timestamp)
+            if('id' in deduped):
+                exist = deduped[id]
+
+                deduped[id] = line if line['src_metadata']['timestamp'] > exist['src_metadata']['timestamp'] else exist
+            else:
+                deduped[id] = line
+            
+            
+
     
-    #print(hashMap)
+    print(f"Length of deduped records: {len(deduped)}")
+    
 
 
-returnUniqueAndLatestEventData()
-#Get list of headings and save to file for Viktoriya
-#Deduplication process
-#Generate tsv files
+
+    #set empty dictionary 'deduped'
+
+    #generate the hash 'id' -> pass 'rec' to a 'raw_id' function. The 'raw_id' function takes an event and returns a template literal like `table_name:partition-key-value`
+
+    '''
+        inside of loop, if deduped[id] is true, set 'exist' to deduped[id] then:
+
+        set deduped[id] = rec.metadata.timestamp > exist.metadata.timestamp ? rec : exist;
+
+        else
+
+        set deduped[id] = rec
+    '''
+
+    '''
+
+    
+    '''
+
+asyncio.run(main(test_file_links, source_bucket))
