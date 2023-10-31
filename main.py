@@ -157,9 +157,6 @@ async def main(links, bucket):
 
         payload = []
         for _, v in deduped.items():  
-            #ev = {}     
-            #ev, ev['ts'] = v['data'], v['ts']
-
             payload.append(v)
 
         df = pd.DataFrame(payload)
